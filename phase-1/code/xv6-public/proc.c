@@ -536,6 +536,13 @@ procdump(void)
 int
 getProcCount(void)
 {
-  cprintf("Hello world!");
-  return 0;
+
+  int ans=0;
+  struct proc *p;
+  for(p=ptable.proc;p<&ptable.proc[NPROC];p++){
+    if(p->state!=UNUSED){
+      ans++;
+    }
+  }
+  return ans;
 }

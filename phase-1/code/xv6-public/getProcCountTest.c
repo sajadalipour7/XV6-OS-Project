@@ -3,7 +3,7 @@
 #include "user.h"
 
 int main(void){
-    getProcCount();
-    printf(1,"successful\n");
+    int procCount=getProcCount();
+    printf(1,"%d \n",procCount);
     exit();
 }
