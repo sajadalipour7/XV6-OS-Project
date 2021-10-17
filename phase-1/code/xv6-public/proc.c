@@ -532,3 +532,10 @@ procdump(void)
     cprintf("\n");
   }
 }
+
+int
+getProcCount(void)
+{
+  cprintf("Hello world!");
+  return 0;
+}
