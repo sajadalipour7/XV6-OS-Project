@@ -7,6 +7,8 @@
 #include "mmu.h"
 #include "proc.h"
 
+extern int readCount;
+
 int
 sys_fork(void)
 {
@@ -98,5 +100,5 @@ sys_getProcCount(void)
 
 int sys_getReadCount(void)
 {
-  return getReadCount();
+  return getReadCount(readCount);
 }

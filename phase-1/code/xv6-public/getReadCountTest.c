@@ -3,7 +3,7 @@
 #include "user.h"
 
 int main(void){
-    getReadCount();
-    printf(1,"ok");
+    int readCount=getReadCount();
+    printf(1,"%d \n",readCount);
     exit();
 }

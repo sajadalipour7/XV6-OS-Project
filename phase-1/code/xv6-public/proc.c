@@ -548,8 +548,7 @@ getProcCount(void)
 }
 
 int
-getReadCount(void)
+getReadCount(int readCount)
 {
-  cprintf("hello world!");
-  return 0;
+  return readCount;
 }
