@@ -546,3 +546,10 @@ getProcCount(void)
   }
   return ans;
 }
+
+int
+getReadCount(void)
+{
+  cprintf("hello world!");
+  return 0;
+}
