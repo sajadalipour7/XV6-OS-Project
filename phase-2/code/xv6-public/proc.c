@@ -12,7 +12,10 @@ struct {
   struct proc proc[NPROC];
 } ptable;
 
+struct spinlock threadlock;
+
 static struct proc *initproc;
+
 
 int nextpid = 1;
 extern void forkret(void);
@@ -24,6 +27,19 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  initlock(&threadlock,"threadlock");
+}
+
+int 
+is_pgdir_common(struct proc* processToCheck){
+  struct proc *p; 
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p != processToCheck && p -> pgdir == processToCheck->pgdir){
+      return 1; // yes it is
+    }
+  }
+  return 0;  // no is isn't
+  
 }
 
 // Must be called with interrupts disabled
@@ -88,6 +104,8 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->stackTop=-1;
+  p->threadsNum=-1;
 
   release(&ptable.lock);
 
@@ -281,6 +299,8 @@ wait(void)
     // Scan through table looking for exited children.
     havekids = 0;
     for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->threadsNum==-1)
+        continue;
       if(p->parent != curproc)
         continue;
       havekids = 1;
@@ -289,11 +309,16 @@ wait(void)
         pid = p->pid;
         kfree(p->kstack);
         p->kstack = 0;
-        freevm(p->pgdir);
+        
+        if(!is_pgdir_common(p))
+          freevm(p->pgdir);
+        
         p->pid = 0;
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
+        p->stackTop=-1;
+        p->threadsNum=0;
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;
@@ -551,4 +576,114 @@ int
 getReadCount(int readCount)
 {
   return readCount;
+}
+
+
+int
+thread_create(void* stack)
+{
+  int  pid;
+  struct proc *np;
+  struct proc *curproc = myproc();
+
+  // Allocate process.
+  if((np = allocproc()) == 0){
+    return -1;
+  }
+
+
+  curproc->threadsNum++;
+  
+  // stack grows donwards
+  np->stackTop=(int)((char*)stack+PGSIZE);
+
+  // might be at the middle  of changing address space in another thread
+  acquire(&ptable.lock);
+  np->pgdir=curproc->pgdir;
+  np->sz=curproc->sz;
+  release(&ptable.lock);
+
+  int bytesOnStack=curproc->stackTop-curproc->tf->esp;
+  np->tf->esp=np->stackTop - bytesOnStack;
+  memmove((void*)np->tf->esp,(void*)curproc->tf->esp,bytesOnStack);
+
+  np->parent=curproc;
+
+  *np->tf=*curproc->tf;
+  
+  // clearing eax for child return in fork
+  np->tf->eax=0;
+  // top of stack
+  np->tf->esp=np->stackTop-bytesOnStack;
+  // base pointer
+  np->tf->ebp=np->stackTop-(curproc->stackTop-curproc->tf->ebp);
+
+
+  int i;
+  for(i = 0; i < NOFILE; i++)
+    if(curproc->ofile[i])
+      np->ofile[i] = filedup(curproc->ofile[i]);
+  np->cwd = idup(curproc->cwd);
+
+  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+
+  pid = np->pid;
+
+  acquire(&ptable.lock);
+
+  np->state = RUNNABLE;
+
+  release(&ptable.lock);
+
+  return pid;
+  
+}
+
+int
+thread_join(void){
+  struct proc *p;
+  int havekids, pid;
+  struct proc *curproc = myproc();
+  
+  acquire(&ptable.lock);
+  for(;;){
+    // Scan through table looking for exited children.
+    havekids = 0;
+    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+      if(p->threadsNum!=-1)
+        continue;
+      if(p->parent != curproc)
+        continue;
+      havekids = 1;
+      if(p->state == ZOMBIE){
+        // Found one.
+        pid = p->pid;
+        kfree(p->kstack);
+        p->kstack = 0;
+        
+        if(!is_pgdir_common(p))
+          freevm(p->pgdir);
+        
+        p->pid = 0;
+        p->parent = 0;
+        p->name[0] = 0;
+        p->killed = 0;
+        p->threadsNum=0;
+        p->stackTop=-1;
+        p->state = UNUSED;
+        release(&ptable.lock);
+        return pid;
+      }
+    }
+
+    // No point waiting if we don't have any children.
+    if(!havekids || curproc->killed){
+      release(&ptable.lock);
+      return -1;
+    }
+
+    // Wait for children to exit.  (See wakeup1 call in proc_exit.)
+    sleep(curproc, &ptable.lock);  //DOC: wait-sleep
+  }
+
 }
