@@ -102,3 +102,17 @@ int sys_getReadCount(void)
 {
   return getReadCount(readCount);
 }
+
+int 
+sys_thread_create(void){
+  void* p;
+  if(argptr(0,(void*)&p,sizeof(*p))<0){
+    return -1;
+  }
+  return thread_create(p);
+}
+
+int 
+sys_thread_join(void){
+  return thread_join();
+}

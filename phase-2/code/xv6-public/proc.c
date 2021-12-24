@@ -105,7 +105,7 @@ found:
   p->state = EMBRYO;
   p->pid = nextpid++;
   p->stackTop=-1;
-  p->threadsNum=-1;
+  p->threadsNum=1;
 
   release(&ptable.lock);
 
@@ -179,15 +179,58 @@ growproc(int n)
   uint sz;
   struct proc *curproc = myproc();
 
+  acquire(&threadlock);
+
   sz = curproc->sz;
   if(n > 0){
-    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0)
+    if((sz = allocuvm(curproc->pgdir, sz, sz + n)) == 0){
+      release(&threadlock);
       return -1;
-  } else if(n < 0){
-    if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0)
-      return -1;
+    }
+  }else if(n < 0){
+      if((sz = deallocuvm(curproc->pgdir, sz, sz + n)) == 0){
+        release(&threadlock);
+        return -1;
+    }
   }
   curproc->sz = sz;
+  acquire(&ptable.lock);
+  struct proc *p;
+  int childrenNum=0;
+  if(curproc->threadsNum==-1){
+    curproc->parent->sz =curproc->sz;
+    childrenNum = curproc->parent->threadsNum-2;
+    if(childrenNum<=0){
+      release(&ptable.lock);
+      release(&threadlock);
+      switchuvm(curproc);
+      return 0;
+    }else{
+      for(p=ptable.proc;p<&ptable.proc[NPROC];p++){
+        if(p!=curproc && p->parent == curproc->parent && p->threadsNum == -1){
+          p->sz = curproc->sz;
+          childrenNum--;
+        }
+      }
+    }
+  }else{
+    childrenNum=curproc->threadsNum-1;
+    if(childrenNum<=0){
+      release(&ptable.lock);
+      release(&threadlock);
+      switchuvm(curproc);
+      return 0;
+    }else{
+      for(p=ptable.proc;p<&ptable.proc[NPROC];p++){
+        if(p->parent == curproc && p->threadsNum== -1){
+          p->sz = curproc->sz;
+          childrenNum--;
+        }
+      }
+    }
+  }
+  release(&ptable.lock);
+  release(&threadlock);
   switchuvm(curproc);
   return 0;
 }
@@ -319,6 +362,7 @@ wait(void)
         p->killed = 0;
         p->stackTop=-1;
         p->threadsNum=0;
+        p->pgdir=0;
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;
@@ -597,6 +641,8 @@ thread_create(void* stack)
   // stack grows donwards
   np->stackTop=(int)((char*)stack+PGSIZE);
 
+  np->threadsNum=-1;
+
   // might be at the middle  of changing address space in another thread
   acquire(&ptable.lock);
   np->pgdir=curproc->pgdir;
@@ -670,6 +716,7 @@ thread_join(void){
         p->killed = 0;
         p->threadsNum=0;
         p->stackTop=-1;
+        p->pgdir=0;
         p->state = UNUSED;
         release(&ptable.lock);
         return pid;

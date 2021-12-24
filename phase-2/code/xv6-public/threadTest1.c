@@ -7,7 +7,7 @@ int x=0;
 
 int main(int argc,char *argv[]){
     // int tid=fork();
-    int tid=clone(stack);
+    int tid=thread_create(stack);
     if(tid<0){
         printf(2,"error!\n");
     }else if(tid==0){
